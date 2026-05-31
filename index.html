@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Парсер статуса пользователя</title>
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .container {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        input[type="text"] {
+            width: 70%;
+            padding: 10px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .toolbar input[type="text"] {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.95em;
+            white-space: nowrap;
+            min-height: 40px;
+            flex: 0 1 auto;
+        }
+        .btn-primary { background: #007bff; color: #fff; }
+        .btn-primary:hover { background: #0056b3; }
+        .btn-success { background: #28a745; color: #fff; }
+        .btn-success:hover { background: #218838; }
+        .btn-info { background: #17a2b8; color: #fff; }
+        .btn-info:hover { background: #138496; }
+        .btn-danger { background: #dc3545; color: #fff; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-warning { background: #6f42c1; color: #fff; }
+        .btn-warning:hover { background: #5a32a3; }
+        .btn-secondary { background: #6c757d; color: #fff; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-sm { padding: 5px 12px; font-size: 0.85em; min-height: 32px; }
+
+        .btn-group {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .btn-group .btn {
+            flex: 1;
+            min-width: 0;
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .container { padding: 10px; }
+            input[type="text"] { width: 100%; margin-right: 0; }
+            .toolbar { flex-direction: column; align-items: stretch; }
+            .toolbar input[type="text"] { min-width: 0; }
+            .btn-row { flex-direction: column; }
+            .btn-row .btn { width: 100%; }
+            .btn-group { flex-direction: column; }
+            .btn-group .btn { width: 100%; }
+            .btn { width: 100%; justify-content: center; }
+            .modal-content { width: 95%; margin: 2% auto; padding: 15px; }
+        }
+
+        @media (max-width: 480px) {
+            h1 { font-size: 1.3em; }
+            .history-table { font-size: 0.8em; }
+            .history-table th,
+            .history-table td { padding: 6px 8px; }
+        }
+
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: white;
+        }
+
+        .status { font-weight: bold; margin: 10px 0; }
+        .online { color: green; }
+        .offline { color: red; }
+        .unknown { color: orange; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background: white;
+            margin: 5% auto;
+            padding: 20px;
+            width: 80%;
+            max-width: 900px;
+            max-height: 80vh;
+            border-radius: 10px;
+            overflow-y: auto;
+            position: relative;
+        }
+        .modal-close {
+            position: absolute;
+            right: 20px;
+            top: 15px;
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+            background: none;
+            border: none;
+        }
+        .modal-close:hover { color: #333; }
+
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        .history-table th, .history-table td {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        .history-table th { background: #f8f9fa; font-weight: bold; }
+        .history-table tr:nth-child(even) { background: #f8f9fa; }
+        .history-table tr:hover { background: #e9ecef; }
+
+        .summary-block {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .summary-block .stat {
+            display: inline-block;
+            margin-right: 20px;
+            font-size: 0.95em;
+        }
+        .history-loading { text-align: center; padding: 20px; color: #666; }
+
+        .tracking-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: white;
+            margin-left: 5px;
+        }
+        .tracking-badge.active { background: #28a745; }
+        .tracking-badge.inactive { background: #6c757d; }
+
+        .last-check { font-size: 0.8em; color: #6c757d; }
+
+        .tracking-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .tracking-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        @media (max-width: 768px) {
+            .tracking-item {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            .tracking-item .btn-group {
+                flex-direction: row;
+            }
+            .tracking-item .btn-group .btn {
+                flex: 1;
+                width: auto;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Парсер статуса пользователя</h1>
+
+            <p>Список отслеживаемых пользователей (мониторинг на сервере):</p>
+
+            <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+                <div class="toolbar">
+                    <input type="text" id="urlInput" placeholder="https://example.com/profile/123">
+                    <div class="btn-row">
+                        <button class="btn btn-primary" onclick="addTracking()">Добавить</button>
+                        <button class="btn btn-success" onclick="exportAllToExcel()">Экспорт в Excel</button>
+                    </div>
+                </div>
+                <div style="margin-top: 8px; color: #6c757d; font-size: 0.9em;">
+                    <em>После добавления URL сервер будет проверять его автоматически, даже если вы закроете браузер.</em>
+                </div>
+            </div>
+
+            <div>
+                <div id="trackingList">
+                    <p>Пока нет отслеживаемых URL</p>
+                </div>
+            </div>
+
+    <div id="historyModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeHistory()">&times;</button>
+            <h2 id="historyTitle">История проверок</h2>
+            <div style="margin-bottom: 10px;">
+                <button class="btn btn-sm btn-success" onclick="exportHistoryToExcel()">Экспорт в Excel</button>
+            </div>
+            <div id="historySummary"></div>
+            <div id="historyData"><p class="history-loading">Загрузка...</p></div>
+        </div>
+    </div>
+
+    <script>
+        const trackedUrls = {};
+        let urlCounter = 0;
+        let pollInterval = null;
+
+        function addTracking() {
+            const urlInput = document.getElementById('urlInput');
+            const url = urlInput.value.trim();
+
+            if (!url) {
+                alert('Введите URL');
+                return;
+            }
+
+            if (trackedUrls[url]) {
+                alert('Этот URL уже добавлен в отслеживание');
+                return;
+            }
+
+            // Сначала проверяем статус
+            fetch('/parse', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url})
+            })
+            .then(r => r.json())
+            .then(data => {
+                // Добавляем URL в серверное отслеживание
+                return fetch('/track', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url: url, interval: 60})
+                });
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    trackedUrls[url] = {
+                        lastStatus: 'unknown',
+                        lastUsername: null,
+                        number: ++urlCounter,
+                        isTracking: true
+                    };
+                    updateTrackingList();
+                    urlInput.value = '';
+                }
+            })
+            .catch(err => alert('Ошибка: ' + err));
+        }
+
+        function updateTrackingList() {
+            const trackingList = document.getElementById('trackingList');
+
+            if (Object.keys(trackedUrls).length === 0) {
+                trackingList.innerHTML = '<p>Пока нет отслеживаемых URL</p>';
+                return;
+            }
+
+            let html = '<div class="tracking-items">';
+
+            for (const url in trackedUrls) {
+                const item = trackedUrls[url];
+                const statusClass = item.lastStatus === 'online' ? 'online' : item.lastStatus === 'offline' ? 'offline' : 'unknown';
+                const badge = item.isTracking
+                    ? '<span class="tracking-badge active">Активен</span>'
+                    : '<span class="tracking-badge inactive">Остановлен</span>';
+                const lastCheckText = item.lastCheck ? `<div class="last-check">Последняя проверка: ${item.lastCheck}</div>` : '';
+                const toggleBtnClass = item.isTracking ? 'btn-danger' : 'btn-primary';
+
+                html += `
+                    <div class="tracking-item">
+                        <div class="tracking-item-info">
+                            <a href="${url}" target="_blank">${item.number}. ${item.username || url}</a>
+                            ${badge}
+                            <div style="margin-top: 5px;">
+                                <span class="status ${statusClass}">Статус: ${item.lastStatus.toUpperCase()}</span>
+                                ${item.username ? `<span style="font-size: 0.85em; color: #6c757d;">${item.username}</span>` : ''}
+                                ${lastCheckText}
+                            </div>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-sm ${toggleBtnClass}" onclick="toggleTracking('${url}')">
+                                ${item.isTracking ? 'Остановить' : 'Следить'}
+                            </button>
+                            <button class="btn btn-sm btn-info" onclick="exportUrlToExcel('${url}')">Excel</button>
+                            <button class="btn btn-sm btn-warning" onclick="showHistory('${url}')">История</button>
+                            <button class="btn btn-sm btn-secondary" onclick="removeTracking('${url}')">Удалить</button>
+                        </div>
+                    </div>`;
+            }
+
+            html += '</div>';
+            trackingList.innerHTML = html;
+        }
+
+        function toggleTracking(url) {
+            if (!trackedUrls[url]) return;
+
+            const wasTracking = trackedUrls[url].isTracking;
+            const endpoint = wasTracking ? '/untrack' : '/track';
+            const body = wasTracking ? {url: url} : {url: url, interval: 60};
+
+            fetch(endpoint, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    trackedUrls[url].isTracking = !wasTracking;
+                    updateTrackingList();
+                }
+            });
+        }
+
+        function removeTracking(url) {
+            if (!confirm('Вы действительно хотите удалить этот URL из отслеживания?')) return;
+
+            fetch('/untrack', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    delete trackedUrls[url];
+                    updateTrackingList();
+                }
+            });
+        }
+
+        function pollTrackedUrls() {
+            fetch('/tracked')
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.success) return;
+                    data.urls.forEach(item => {
+                        if (trackedUrls[item.url]) {
+                            trackedUrls[item.url].lastStatus = item.last_status || 'unknown';
+                            trackedUrls[item.url].lastCheck = item.last_check;
+                            trackedUrls[item.url].lastUsername = item.last_username;
+                            trackedUrls[item.url].username = item.last_username || trackedUrls[item.url].username;
+                            trackedUrls[item.url].isTracking = item.enabled;
+                        } else {
+                            trackedUrls[item.url] = {
+                                lastStatus: item.last_status || 'unknown',
+                                username: item.last_username,
+                                lastCheck: item.last_check,
+                                number: ++urlCounter,
+                                isTracking: item.enabled
+                            };
+                        }
+                    });
+                    updateTrackingList();
+                });
+        }
+
+        function showHistory(url) {
+            const modal = document.getElementById('historyModal');
+            const title = document.getElementById('historyTitle');
+            const summaryDiv = document.getElementById('historySummary');
+            const dataDiv = document.getElementById('historyData');
+
+            title.textContent = `История проверок: ${url}`;
+            summaryDiv.innerHTML = '<p class="history-loading">Загрузка статистики...</p>';
+            dataDiv.innerHTML = '<p class="history-loading">Загрузка истории...</p>';
+            modal.style.display = 'block';
+
+            fetch('/history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: url, limit: 200, summary: true })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    dataDiv.innerHTML = `<p style="color: red;">Ошибка: ${data.error || 'Неизвестная ошибка'}</p>`;
+                    return;
+                }
+
+                if (data.summary) {
+                    const s = data.summary;
+                    const onlinePct = s.total > 0 ? ((s.online / s.total) * 100).toFixed(1) : 0;
+                    summaryDiv.innerHTML = `
+                        <div class="summary-block">
+                            <strong>Статистика:</strong><br>
+                            <span class="stat">Всего проверок: <strong>${s.total}</strong></span>
+                            <span class="stat" style="color: green;">Онлайн: <strong>${s.online}</strong> (${onlinePct}%)</span>
+                            <span class="stat" style="color: red;">Оффлайн: <strong>${s.offline}</strong></span>
+                            <span class="stat" style="color: orange;">Неизвестно: <strong>${s.unknown}</strong></span><br>
+                            <span class="stat">Первая проверка: <strong>${s.first_check || '-'}</strong></span>
+                            <span class="stat">Последняя проверка: <strong>${s.last_check || '-'}</strong></span>
+                        </div>
+                    `;
+                }
+
+                if (data.history.length === 0) {
+                    dataDiv.innerHTML = '<p>История проверок отсутствует.</p>';
+                    return;
+                }
+
+                let tableHtml = `<table class="history-table">
+                    <thead><tr>
+                        <th>Время</th>
+                        <th>Статус</th>
+                        <th>Индикаторы</th>
+                    </tr></thead><tbody>`;
+
+                data.history.forEach(entry => {
+                    const statusClass = entry.status === 'online' ? 'online' : entry.status === 'offline' ? 'offline' : 'unknown';
+                    const indicators = entry.online_indicators && entry.online_indicators.length > 0
+                        ? entry.online_indicators.map(ind => `${ind.selector}: "${ind.text || ind.content}"`).join('<br>')
+                        : '-';
+                    tableHtml += `<tr>
+                        <td>${entry.timestamp}</td>
+                        <td class="${statusClass}"><strong>${entry.status.toUpperCase()}</strong></td>
+                        <td>${indicators}</td>
+                    </tr>`;
+                });
+
+                tableHtml += '</tbody></table>';
+                dataDiv.innerHTML = tableHtml;
+            })
+            .catch(error => {
+                dataDiv.innerHTML = `<p style="color: red;">Ошибка запроса: ${error}</p>`;
+            });
+        }
+
+        function closeHistory() {
+            document.getElementById('historyModal').style.display = 'none';
+        }
+
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('historyModal');
+            if (event.target === modal) closeHistory();
+        });
+
+        function exportAllToExcel() {
+            window.open('/export-excel', '_blank');
+        }
+
+        function exportUrlToExcel(url) {
+            window.open('/export-excel?url=' + encodeURIComponent(url), '_blank');
+        }
+
+        function exportHistoryToExcel() {
+            const title = document.getElementById('historyTitle').textContent;
+            const url = title.replace('История проверок: ', '');
+            if (url) window.open('/export-excel?url=' + encodeURIComponent(url), '_blank');
+        }
+
+        // Загружаем список отслеживаемых URL с сервера и запускаем polling
+        window.addEventListener('load', function() {
+            pollTrackedUrls();
+
+            // Опрашиваем сервер каждые 10 секунд для обновления статусов
+            pollInterval = setInterval(pollTrackedUrls, 10000);
+        });
+    </script>
+</body>
+
+</html>

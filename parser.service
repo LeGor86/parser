@@ -1,0 +1,15 @@
+[Unit]
+Description=Site Parser Web Interface with Background Monitoring
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/parser
+Environment=TZ=Asia/Yekaterinburg
+ExecStart=/usr/bin/python3 /root/parser/site_parser.py --serve --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
