@@ -412,8 +412,17 @@ class BackgroundMonitor:
 
     def _check_url(self, url: str):
         try:
+            conn = get_db_conn()
+            cursor = conn.cursor()
+            cursor.execute('SELECT last_status FROM tracked_urls WHERE url = ?', (url,))
+            row = cursor.fetchone()
+            old_status = row['last_status'] if row else None
+            conn.close()
+
             result = parse_user_status(url, ONLINE_TAGS)
             save_status_to_db(result)
+
+            new_status = result['status']
 
             conn = get_db_conn()
             cursor = conn.cursor()
@@ -422,15 +431,57 @@ class BackgroundMonitor:
             SET last_status = ?, last_username = ?, last_check = ?
             WHERE url = ?
             ''', (
-                result['status'],
+                new_status,
                 result.get('username'),
                 now_ekb(),
                 url
             ))
             conn.commit()
             conn.close()
+
+            if old_status and old_status != new_status and new_status in ('online', 'offline'):
+                send_telegram_notification(url, result.get('username'), old_status, new_status)
         except Exception as e:
             print(f"Ошибка при фоновой проверке {url}: {e}")
+
+
+# --- Telegram notifications ---
+
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
+
+
+def send_telegram_notification(url: str, username: str | None, old_status: str, new_status: str) -> None:
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+
+    emoji = '🟢' if new_status == 'online' else '🔴'
+    status_text = 'В сети' if new_status == 'online' else 'Не в сети'
+    display_name = username or url
+
+    text = (
+        f"{emoji} <b>Изменение статуса</b>\n"
+        f"Пользователь: {display_name}\n"
+        f"Статус: {status_text}\n"
+        f"URL: {url}\n"
+        f"Время: {now_ekb()}"
+    )
+
+    try:
+        resp = requests.post(
+            f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage',
+            json={
+                'chat_id': TELEGRAM_CHAT_ID,
+                'text': text,
+                'parse_mode': 'HTML',
+                'disable_web_page_preview': True
+            },
+            timeout=10
+        )
+        if not resp.json().get('ok'):
+            print(f"Ошибка Telegram: {resp.text}")
+    except Exception as e:
+        print(f"Ошибка отправки Telegram: {e}")
 
 
 _monitor = BackgroundMonitor()
@@ -633,6 +684,11 @@ def run_server(port: int = 8000) -> None:
     socketserver.TCPServer.allow_reuse_address = True
 
     _monitor.start()
+
+    if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+        print("Telegram-уведомления включены")
+    else:
+        print("Telegram-уведомления отключены (задайте TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID)")
 
     with socketserver.TCPServer(("", port), SiteParserHandler) as httpd:
         print(f"Сервер запущен: http://0.0.0.0:{port}/")
