@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import argparse
+import base64
 import io
 import json
 import os
@@ -539,11 +540,52 @@ def get_tracked_urls() -> list:
     return results
 
 
+# --- Authentication ---
+
+AUTH_USERNAME = os.environ.get('AUTH_USERNAME', '')
+AUTH_PASSWORD = os.environ.get('AUTH_PASSWORD', '')
+
+
+def auth_enabled() -> bool:
+    return bool(AUTH_USERNAME) and bool(AUTH_PASSWORD)
+
+
 class SiteParserHandler(SimpleHTTPRequestHandler):
+    def _check_auth(self) -> bool:
+        if not auth_enabled():
+            return True
+
+        auth_header = self.headers.get('Authorization', '')
+        if not auth_header.startswith('Basic '):
+            self._send_unauthorized()
+            return False
+
+        try:
+            decoded = base64.b64decode(auth_header[6:]).decode('utf-8')
+            username, password = decoded.split(':', 1)
+        except Exception:
+            self._send_unauthorized()
+            return False
+
+        if username == AUTH_USERNAME and password == AUTH_PASSWORD:
+            return True
+
+        self._send_unauthorized()
+        return False
+
+    def _send_unauthorized(self):
+        self.send_response(401)
+        self.send_header('WWW-Authenticate', 'Basic realm="Parser Status"')
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(b'<html><body><h1>401 Unauthorized</h1></body></html>')
+
     def _send_json(self, data, status=200):
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self.send_header('Access-Control-Expose-Headers', 'WWW-Authenticate')
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False, default=str).encode('utf-8'))
 
@@ -551,7 +593,8 @@ class SiteParserHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self.send_header('Access-Control-Expose-Headers', 'WWW-Authenticate')
         self.end_headers()
 
     def _read_body(self):
@@ -560,6 +603,8 @@ class SiteParserHandler(SimpleHTTPRequestHandler):
         return json.loads(body) if body else {}
 
     def do_POST(self):
+        if not self._check_auth():
+            return
         try:
             if self.path == '/parse':
                 self._handle_parse()
@@ -639,6 +684,8 @@ class SiteParserHandler(SimpleHTTPRequestHandler):
         self._send_json({"success": success, "url": url, "tracking": False})
 
     def do_GET(self):
+        if not self._check_auth():
+            return
         if self.path == '/' or self.path == '/index.html':
             try:
                 with open('index.html', 'r', encoding='utf-8') as file:
@@ -689,6 +736,11 @@ def run_server(port: int = 8000) -> None:
         print("Telegram-уведомления включены")
     else:
         print("Telegram-уведомления отключены (задайте TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID)")
+
+    if auth_enabled():
+        print(f"Аутентификация включена (логин: {AUTH_USERNAME})")
+    else:
+        print("Аутентификация отключена (задайте AUTH_USERNAME и AUTH_PASSWORD)")
 
     with socketserver.TCPServer(("", port), SiteParserHandler) as httpd:
         print(f"Сервер запущен: http://0.0.0.0:{port}/")

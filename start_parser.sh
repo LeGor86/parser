@@ -3,6 +3,10 @@
 # Автоматический запуск парсера (Linux/Ubuntu)
 export TZ=Asia/Yekaterinburg
 
+# Аутентификация (задайте свои логин и пароль)
+# export AUTH_USERNAME=admin
+# export AUTH_PASSWORD=your_password
+
 # Установка зависимостей
 echo "Установка необходимых зависимостей..."
 pip3 install requests beautifulsoup4 openpyxl

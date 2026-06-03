@@ -9,6 +9,8 @@ WorkingDirectory=/root/parser
 Environment=TZ=Asia/Yekaterinburg
 Environment=TELEGRAM_BOT_TOKEN=
 Environment=TELEGRAM_CHAT_ID=
+Environment=AUTH_USERNAME=
+Environment=AUTH_PASSWORD=
 ExecStart=/usr/bin/python3 /root/parser/site_parser.py --serve --port 8000
 Restart=always
 RestartSec=5
